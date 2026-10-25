@@ -22,6 +22,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const data = (await response.json().catch(() => null)) as { message?: string; code?: string } | null;
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined" && window.location.pathname !== "/login") {
+      window.location.replace("/login");
+    }
     throw new ApiError(data?.message || "요청을 처리하지 못했어요.", data?.code || "error", response.status);
   }
   return data as T;

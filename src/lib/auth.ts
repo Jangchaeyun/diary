@@ -1,8 +1,7 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import { cookies } from "next/headers";
-import { dataDirectory, getDb, withTransaction } from "@/lib/db";
+import { getDb, withTransaction } from "@/lib/db";
+import { ensureRemote } from "@/lib/remote-db";
 import { jsonError } from "@/lib/http";
 import { withUser } from "@/lib/user-context";
 import type { SessionUser } from "@/lib/session";
@@ -13,12 +12,13 @@ const MAX_AGE = 60 * 60 * 24 * 30;
 function sessionSecret() {
   const fromEnv = process.env.SESSION_SECRET?.trim() ?? "";
   if (fromEnv.length >= 16) return fromEnv;
-  const file = path.join(dataDirectory(), "session.secret");
-  if (fs.existsSync(file)) return fs.readFileSync(file, "utf8").trim();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const db = getDb();
+  const existing = db.prepare("SELECT value FROM app_secrets WHERE id = 'session'").get() as { value?: string } | undefined;
+  if (existing?.value) return String(existing.value);
   const generated = randomBytes(32).toString("hex");
-  fs.writeFileSync(file, generated, { mode: 0o600 });
-  return generated;
+  db.prepare("INSERT INTO app_secrets (id, value) VALUES ('session', ?) ON CONFLICT(id) DO NOTHING").run(generated);
+  const stored = db.prepare("SELECT value FROM app_secrets WHERE id = 'session'").get() as { value?: string } | undefined;
+  return stored?.value ? String(stored.value) : generated;
 }
 
 function sign(payload: string) {
@@ -78,6 +78,7 @@ export async function clearSession() {
 }
 
 export async function currentUser(): Promise<SessionUser | null> {
+  await ensureRemote();
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
@@ -129,6 +130,7 @@ function claimOrphans(userId: string) {
 }
 
 export async function signup(input: unknown) {
+  await ensureRemote();
   const data = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const email = normalizeEmail(data.email);
   const name = normalizeName(data.name);
@@ -156,6 +158,7 @@ export async function signup(input: unknown) {
 }
 
 export async function login(input: unknown) {
+  await ensureRemote();
   const data = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const email = normalizeEmail(data.email);
   const password = typeof data.password === "string" ? data.password : "";

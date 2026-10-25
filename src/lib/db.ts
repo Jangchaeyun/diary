@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { DatabaseSync } from "node:sqlite";
+import { dataDirectory } from "@/lib/data-path";
+import { ensureRemote, usesRemoteDb, watchWrites } from "@/lib/remote-db";
 
 const globalForDb = globalThis as unknown as { diaryDb?: DatabaseSync };
 
@@ -100,6 +102,10 @@ function migrate(db: DatabaseSync) {
       PRIMARY KEY (user_id, mood_date),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS app_secrets (
+      id TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_photos_entry ON photos(entry_id);
     CREATE INDEX IF NOT EXISTS idx_ai_lookup ON ai_results(scope, scope_id, kind, created_at);
   `);
@@ -110,19 +116,17 @@ function migrate(db: DatabaseSync) {
   db.exec("CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(user_id, entry_date, updated_at)");
 }
 
-export function dataDirectory() {
-  if (process.env.VERCEL) return path.join("/tmp", "diary-data");
-  return path.join(process.cwd(), "data");
-}
+export { dataDirectory } from "@/lib/data-path";
 
 export function getDb() {
   if (!globalForDb.diaryDb) {
     const dir = dataDirectory();
     fs.mkdirSync(path.join(dir, "photos"), { recursive: true });
     const db = new DatabaseSync(path.join(dir, "diary.sqlite"));
-    globalForDb.diaryDb = db;
+    migrate(db);
+    if (usesRemoteDb()) db.exec("PRAGMA journal_mode = DELETE");
+    globalForDb.diaryDb = watchWrites(db);
   }
-  migrate(globalForDb.diaryDb);
   return globalForDb.diaryDb;
 }
 
