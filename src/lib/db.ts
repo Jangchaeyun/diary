@@ -110,9 +110,14 @@ function migrate(db: DatabaseSync) {
   db.exec("CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(user_id, entry_date, updated_at)");
 }
 
+export function dataDirectory() {
+  if (process.env.VERCEL) return path.join("/tmp", "diary-data");
+  return path.join(process.cwd(), "data");
+}
+
 export function getDb() {
   if (!globalForDb.diaryDb) {
-    const dir = path.join(process.cwd(), "data");
+    const dir = dataDirectory();
     fs.mkdirSync(path.join(dir, "photos"), { recursive: true });
     const db = new DatabaseSync(path.join(dir, "diary.sqlite"));
     globalForDb.diaryDb = db;
@@ -122,7 +127,7 @@ export function getDb() {
 }
 
 export function photoDirectory() {
-  return path.join(process.cwd(), "data", "photos");
+  return path.join(dataDirectory(), "photos");
 }
 
 export function withTransaction<T>(fn: () => T) {

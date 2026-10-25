@@ -2,7 +2,7 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import fs from "node:fs";
 import path from "node:path";
 import { cookies } from "next/headers";
-import { getDb, withTransaction } from "@/lib/db";
+import { dataDirectory, getDb, withTransaction } from "@/lib/db";
 import { jsonError } from "@/lib/http";
 import { withUser } from "@/lib/user-context";
 import type { SessionUser } from "@/lib/session";
@@ -13,7 +13,7 @@ const MAX_AGE = 60 * 60 * 24 * 30;
 function sessionSecret() {
   const fromEnv = process.env.SESSION_SECRET?.trim() ?? "";
   if (fromEnv.length >= 16) return fromEnv;
-  const file = path.join(process.cwd(), "data", "session.secret");
+  const file = path.join(dataDirectory(), "session.secret");
   if (fs.existsSync(file)) return fs.readFileSync(file, "utf8").trim();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const generated = randomBytes(32).toString("hex");
